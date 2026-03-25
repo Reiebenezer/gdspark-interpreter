@@ -1,24 +1,39 @@
 {
   "name": "gdspark-interpreter",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Internal interpreter utilities for running GDSpark command flows in frontend applications.",
   "type": "module",
-  "private": false,
-  "main": "./src/index.ts",
-  "module": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts",
-    "./context": "./src/context.ts",
-    "./display": "./src/display.ts",
-    "./interpreter": "./src/interpreter.ts",
-    "./scenario": "./src/scenario.ts",
-    "./types": "./src/types.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./context": {
+      "types": "./dist/context.d.ts",
+      "import": "./dist/context.js"
+    },
+    "./interpreter": {
+      "types": "./dist/interpreter.d.ts",
+      "import": "./dist/interpreter.js"
+    },
+    "./scenario": {
+      "types": "./dist/scenario.d.ts",
+      "import": "./dist/scenario.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "import": "./dist/types.js"
+    }
   },
   "files": [
-    "src"
+    "dist"
   ],
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "npm run build",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [
@@ -32,7 +47,7 @@
     "@reiebenezer/gdspark-parser": "^0.1.3",
     "@reiebenezer/ts-utils": "^0.1.6"
   },
-  "peerDependencies": {
-    "typescript": "^5"
+  "devDependencies": {
+    "typescript": "^5.9.3"
   }
 }
