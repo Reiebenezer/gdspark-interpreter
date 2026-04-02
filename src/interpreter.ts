@@ -37,8 +37,8 @@ import { derived, effect, signal } from '@reiebenezer/ts-utils/signal';
 import { calculateDate } from './utils';
 
 export default function GDSparkInterpreter(
-  testConstraints: TestConstraints,
   seed?: number,
+  testConstraints?: TestConstraints,
 ) {
   const flights = generateFlights(seed);
   const log = signal<Log>();
