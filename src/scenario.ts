@@ -18,11 +18,19 @@ export function generateRandomFlightDetails(seeder: Seeder): Flight {
   const dayDurationInMs = 1000 * 60 * 60 * 24;
 
   const airlineCode = seeder.pickFrom(AIRLINE_IATA_CODES);
+  const flightNumber = seeder.nextFromIntRange(100, 1000);
   const dateOfFlight = seeder.nextDate(
     new Date(),
     new Date(Date.now() + dayDurationInMs * 5),
   );
+  
+  // Add random hours
+  dateOfFlight.setHours(seeder.nextFromIntRange(1, 25), seeder.nextFromIntRange(1, 60), 0, 0);
+
+  // origin
   const from = seeder.pickFrom(AIRPORTS);
+
+  // destination
   const to = seeder.pickFrom(AIRPORTS.filter((c) => c !== from)); // filtered to ensure that there is no same from-to city
   const seats: Flight['booking'] = {
     F: seeder.nextFromIntRange(0, 10),
@@ -39,9 +47,10 @@ export function generateRandomFlightDetails(seeder: Seeder): Flight {
 
   return {
     airlineCode,
+    flightNumber,
     dateOfFlight,
-    from,
-    to,
+    origin: from,
+    destination: to,
     booking: seats,
   };
 }

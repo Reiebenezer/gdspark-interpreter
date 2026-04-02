@@ -1,46 +1,109 @@
 # GDSpark Interpreter
 
-Internal interpreter package for GDSpark frontend flows.
+Internal interpreter utilities for running GDSpark command flows in frontend applications.
 
-## Usage
+## Installation
 
-Generate a scenario from a seed by calling `generateFlights(seed)`, then initialize the working context with `ContextHandler()`.
-
-```ts
-import { ContextHandler, generateFlights, handleCommand } from 'gdspark-interpreter';
-import { parse } from '@reiebenezer/gdspark-parser';
-
-const seed = 12345;
-const flights = generateFlights(seed);
-const context = ContextHandler();
+```bash
+npm install @reiebenezer/gdspark-interpreter
 ```
 
-Whenever the frontend sends a command string:
+## Package API
 
-1. Parse the command with `parse()`.
-2. Add the parsed command to the command stack with `context.addToCommandStack(command)`.
-3. Handle the command with `handleCommand(command, context, flights)`.
+The package currently exposes these public entrypoints:
+
+- `Interpreter` from `@reiebenezer/gdspark-interpreter`
+- `generateFlights` from `@reiebenezer/gdspark-interpreter/scenario`
+- shared types from `@reiebenezer/gdspark-interpreter/types`
+
+## Basic Usage
 
 ```ts
-const command = parse(input);
-context.addToCommandStack(command);
-handleCommand(command, context, flights);
+import { Interpreter } from '@reiebenezer/gdspark-interpreter';
+import type { TestConstraints } from '@reiebenezer/gdspark-interpreter/types';
+
+const constraints: TestConstraints = {
+  expectedANQuery: {
+    dateOfFlight: new Date('2026-04-10'),
+    origin: 'MNL',
+    destination: 'CEB',
+  },
+  expectedPNR: {
+    names: [],
+    segments: [],
+  },
+};
+
+const interpreter = Interpreter(constraints, 12345);
 ```
 
-## Frontend flow
+- The first argument is a `TestConstraints` object used by the interpreter flow.
+- The second argument is an optional seed used to generate deterministic flight scenarios.
+
+## Handling Commands
+
+Pass raw command strings to `handleInput()`.
 
 ```ts
-import { ContextHandler, generateFlights, handleCommand } from 'gdspark-interpreter';
-import { parse } from '@reiebenezer/gdspark-parser';
+interpreter.handleInput('AN10APR MNLCEB');
+interpreter.handleInput('SS1Y1');
+interpreter.handleInput('NM1DELA CRUZ/JUAN MR');
+interpreter.handleInput('APM09171234567');
+interpreter.handleInput('APEjuan@example.com');
+```
 
-const flights = generateFlights(seed);
-const context = ContextHandler();
+The interpreter parses each command internally and updates its reactive state.
 
-function onCommand(input: string) {
-  const command = parse(input);
-  context.addToCommandStack(command);
-  handleCommand(command, context, flights);
+## Listening For State Changes
+
+Use `addListener()` to receive the latest displayed flights and PNR state whenever the interpreter changes.
+
+```ts
+const stopListening = interpreter.addListener(({ displayedFlights, pnr }) => {
+  console.log('Flights:', displayedFlights);
+  console.log('PNR:', pnr);
+});
+```
+
+The listener receives:
+
+- `displayedFlights`: `Flight[] | undefined`
+- `pnr`: `PNR`
+
+`addListener()` returns an unsubscribe function.
+
+## Listening For Logs
+
+Use `addLogListener()` to react to runtime warnings and validation errors.
+
+```ts
+const stopLogListener = interpreter.addLogListener((log) => {
+  console.log(log.type, log.text);
+});
+```
+
+The log payload has this shape:
+
+```ts
+interface Log {
+  type: 'warn' | 'err' | 'info';
+  text: string;
 }
 ```
 
-This package is intended for internal use with GDSpark.
+`addLogListener()` also returns an unsubscribe function.
+
+## Scenario Utilities
+
+If you need direct access to generated flights for debugging or UI previews, import `generateFlights()` from the scenario entrypoint.
+
+```ts
+import { generateFlights } from '@reiebenezer/gdspark-interpreter/scenario';
+
+const flights = generateFlights(12345);
+```
+
+## Notes
+
+- `ER` is not implemented yet.
+- This package is intended for internal use with GDSpark.

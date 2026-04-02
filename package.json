@@ -1,6 +1,6 @@
 {
   "name": "@reiebenezer/gdspark-interpreter",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Internal interpreter utilities for running GDSpark command flows in frontend applications.",
   "type": "module",
   "main": "./dist/index.js",
@@ -10,10 +10,6 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./context": {
-      "types": "./dist/context.d.ts",
-      "import": "./dist/context.js"
     },
     "./interpreter": {
       "types": "./dist/interpreter.d.ts",
@@ -44,8 +40,8 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "@reiebenezer/gdspark-parser": "^0.1.4",
-    "@reiebenezer/ts-utils": "^0.1.6"
+    "@reiebenezer/gdspark-parser": "^0.1.7",
+    "@reiebenezer/ts-utils": "^0.2.1"
   },
   "devDependencies": {
     "typescript": "^5.9.3"

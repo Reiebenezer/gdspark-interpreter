@@ -1,4 +1,4 @@
-import type { Command } from '@reiebenezer/gdspark-parser/types';
+import type { Command, ParsedCommand } from '@reiebenezer/gdspark-parser/types';
 
 export const AIRLINE_IATA_CODES = [
   'PR', // Philippine Airlines
@@ -61,67 +61,91 @@ export type BookingClass = (typeof BOOKING_CLASS_CODES)[number];
 
 export interface Flight {
   airlineCode: AirlineCode;
+  flightNumber: number;
   dateOfFlight: Date;
-  from: City;
-  to: City;
+  origin: City;
+  destination: City;
   booking: Record<BookingClass, number>;
 }
 
 // ------------------------------------------------------------------------------------
 // CONTEXT TYPES
 // ------------------------------------------------------------------------------------
-export interface Context {
-  addToCommandStack(command: Command, reverse?: () => void): number;
-  purgeFromCommandStack(line: number): Command | undefined;
-
-  pnrData: PNRData;
-  unsetPNRData(): void;
-
-  addPassenger(...passengers: PassengerData[]): void;
-  removePassenger(...passengers: PassengerData[]): void;
-
-  readonly passengerCount: number;
-
-  setPassengerMobile(mobile: string): void;
-  setPassengerEmail(email: string): void;
-  setTicketExpiry(date: Date): void;
-
-  unsetPassengerMobile(): void;
-  unsetPassengerEmail(): void;
-  unsetTicketExpiry(): void;
-
-  getReadonlyData(): ReadonlyContextData;
-
-  addListener(listener: ContextListener): void;
+export interface FlightQueryParams {
+  airlineBrandCode?: AirlineCode;
+  dateOfFlight: Date;
+  origin: City;
+  destination: City;
 }
 
-export interface PNRData {
-  passengerCount: number;
+export interface PNRSegment {
+  airlineCode: AirlineCode;
   bookingClass: BookingClass;
-  flightNumber: number;
-  passengerMobile?: string;
-  passengerEmail?: string;
-  ticketExpiry?: Date;
+  dateOfFlight: Date;
+  origin: City;
+  destination: City;
+  statusCode: StatusCode;
+  passengerCount: number;
 }
 
-export interface PassengerData {
+export type StatusCode = 'HK' | 'UC'; // simplified, no need for asynchronous flight simulation changes
+
+export interface PNRPassengerName {
   surname: string;
   givenName: string;
   title?: string;
 }
 
-export interface ReadonlyContextData {
-  pnrData: PNRData;
-  passengers: readonly PassengerData[];
+export interface PNR {
+  names: PNRPassengerName[];
+  segments: PNRSegment[];
+  mobile?: string;
+  email?: string;
+  ticketingDeadline?: Date;
 }
 
-export type ContextListener = (updateData: {
-  pnrData?: PNRData;
-  passengers: readonly PassengerData[];
-}) => void;
+export interface TestConstraints {
+  expectedANQuery: FlightQueryParams;
+  expectedPNR: PNR;
+}
 
-export class InterpreterError extends Error {
-  constructor(message?: string, errorOptions?: ErrorOptions) {
-    super(`Interpreter Error: ${message}`, errorOptions);
+export type StateUpdater = (newState: SessionState) => void;
+
+export interface SessionState {
+  flightQueryParams?: FlightQueryParams;
+  flightSelectionParams?: PNRSegment;
+  passengers: PNRPassengerName[];
+  mobile?: string;
+  email?: string;
+}
+
+export const MONTHS = [
+  'JAN',
+  'FEB',
+  'MAR',
+  'APR',
+  'MAY',
+  'JUN',
+  'JUL',
+  'AUG',
+  'SEP',
+  'OCT',
+  'NOV',
+  'DEC',
+] as const;
+
+export type Month = (typeof MONTHS)[number];
+
+// ------------------------------------------------------------------------------------
+// Logging (for listening via frontend)
+// ------------------------------------------------------------------------------------
+export interface Log {
+  type: 'warn' | 'err' | 'info';
+  text: string;
+}
+
+export class RuntimeError extends Error {
+  constructor(message?: string) {
+    super(message);
   }
 }

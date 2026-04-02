@@ -1,260 +1,329 @@
+import {
+  AIRPORTS,
+  BOOKING_CLASS_CODES,
+  MONTHS,
+  type AirlineCode,
+  type BookingClass,
+  type City,
+  type Flight,
+  type FlightQueryParams,
+  type PNRSegment,
+  type SessionState,
+  type Month,
+  type PNRPassengerName,
+  type StateUpdater,
+  type TestConstraints,
+  type PNR,
+  type Log,
+  type StatusCode,
+  RuntimeError,
+} from './types';
+import { generateFlights } from './scenario';
+import { parse } from '@reiebenezer/gdspark-parser';
 import type {
   AvailabilityCommand,
   Command,
-  DeleteLineCommand,
+  CommandCode,
+  CancelSegmentCommand,
   NameCommand,
+  ParsedCommand,
   PassengerEmailCommand,
   PassengerMobileCommand,
-  SellCommand,
+  SellSegmentCommand,
   TicketingLimitCommand,
   EndRecordCommand,
 } from '@reiebenezer/gdspark-parser/types';
-import {
-  InterpreterError,
-  type BookingClass,
-  type Context,
-  type Flight,
-  type PassengerData,
-  type ReadonlyContextData,
-} from './types';
-import { isDateEqual } from './utils';
+import { derived, effect, signal } from '@reiebenezer/ts-utils/signal';
+import { calculateDate } from './utils';
 
-const MONTHS = {
-  JAN: 0,
-  FEB: 1,
-  MAR: 2,
-  APR: 3,
-  MAY: 4,
-  JUN: 5,
-  JUL: 6,
-  AUG: 7,
-  SEP: 8,
-  OCT: 9,
-  NOV: 10,
-  DEC: 11,
-} as const;
-
-export function handleCommand(
-  command: AvailabilityCommand,
-  context: Context,
-  flights: Flight[],
-): Flight[];
-export function handleCommand(
-  command: EndRecordCommand,
-  context: Context,
-  flights: Flight[],
-): ReadonlyContextData;
-export function handleCommand(
-  command: Command,
-  context: Context,
-  flights: Flight[],
-): void | Flight[] | ReadonlyContextData;
-export function handleCommand(
-  command: Command,
-  context: Context,
-  flights: Flight[],
+export default function GDSparkInterpreter(
+  testConstraints: TestConstraints,
+  seed?: number,
 ) {
-  switch (command.code) {
-    case 'AN':
-      return handleCheckForAvailableFlights(command as AvailabilityCommand);
+  const flights = generateFlights(seed);
+  const log = signal<Log>();
 
-    case 'SS':
-      return handleSelectFlight(command as SellCommand);
-
-    case 'NM':
-      return handleAddName(command as NameCommand);
-
-    case 'APM':
-      return handleAddPassengerMobile(command as PassengerMobileCommand);
-
-    case 'APE':
-      return handleAddPassengerEmail(command as PassengerEmailCommand);
-
-    case 'TKTL':
-      return handleSetTicketLimit(command as TicketingLimitCommand);
-
-    case 'ER':
-      return handleSaveRecord();
-
-    case 'XE':
-      return handleDeleteLine(command as DeleteLineCommand);
-
-    case 'FXP':
-    case 'FXB':
-    case 'TTK':
-      return;
-  }
+  // ------------------------------------------------------------------------------------
+  // AN
+  // ------------------------------------------------------------------------------------
 
   /**
-   * A display function for showing available list of flights.
-   * @returns A list of flights.
+   * Flight query paramerters (set using the AN command)
+   * This exists as a secondary cross check for `filteredFlights[]`
    */
-  function handleCheckForAvailableFlights(command: AvailabilityCommand) {
-    let month = MONTHS[command.travelMonth as keyof typeof MONTHS];
+  const flightQueryParams = signal<FlightQueryParams>();
 
-    if (!month) {
-      throw new InterpreterError(`Invalid month code ${command.travelMonth}`); // this should not happen as the incorrect code is filtered out at parser level
-    }
+  /**
+   * A filtered list of flights from `queryParams`
+   *
+   * The reason why this can be `undefined` is that there is a difference between a query returning zero values vs no filter at all.
+   * Simply put, no filter = `undefined`, and filters that give 0 output = `[]`.
+   */
+  const displayedFlights = derived(() => {
+    const params = flightQueryParams.get();
 
-    // Auto-parse new year (future lookahead)
-    const inputDate = new Date();
+    if (!params) return undefined;
 
-    inputDate.setMonth(month);
-    inputDate.setDate(parseInt(command.travelDay));
+    return flights.filter(
+      (f) =>
+        params.dateOfFlight.getFullYear() === f.dateOfFlight.getFullYear() &&
+        params.dateOfFlight.getMonth() === f.dateOfFlight.getMonth() &&
+        params.dateOfFlight.getDate() === f.dateOfFlight.getDate() &&
+        params.origin === f.origin &&
+        params.destination === f.destination &&
+        (!params.airlineBrandCode || params.airlineBrandCode === f.airlineCode),
+    );
+  }, [flightQueryParams]);
 
-    // Increment flight date by 1 if flight date is in the past
-    if (inputDate.getTime() <= new Date().getTime()) {
-      inputDate.setFullYear(inputDate.getFullYear() + 1);
-    }
+  // ------------------------------------------------------------------------------------
+  // PNR
+  // ------------------------------------------------------------------------------------
+  const pnr = signal<PNR>({
+    names: [],
+    segments: [],
+    email: undefined,
+    mobile: undefined,
+  });
 
-    // filter flights
-    let filteredFlights = flights.filter((f) =>
-      isDateEqual(f.dateOfFlight, inputDate),
+  const stateData = derived(
+    () => ({
+      queryParams: flightQueryParams.get(),
+      displayedFlights: displayedFlights.get(),
+      pnr: pnr.get(),
+    }),
+    [flightQueryParams, pnr],
+  );
+
+  return {
+    handleInput(commandString: string) {
+      try {
+        const command = parse(commandString);
+        switch (command.code) {
+          case 'AN':
+            handleAN(command);
+            break;
+
+          case 'SS':
+            handleSS(command);
+            break;
+
+          case 'NM':
+            handleNM(command);
+            break;
+
+          case 'APM':
+            handleAPM(command);
+            break;
+
+          case 'APE':
+            handleAPE(command);
+            break;
+
+          case 'XE':
+            handleXE(command);
+            break;
+
+          case 'TKTL':
+            handleTKTL(command);
+            break;
+
+          case 'ER':
+            handleER(command);
+            break;
+
+          case 'FXP':
+          case 'FXB':
+          case 'TTK':
+        }
+      } catch (error) {
+        if (error instanceof RuntimeError)
+          log.set({
+            type: 'err',
+            text: error.message,
+          });
+
+        else {
+          throw error;
+        }
+      }
+    },
+
+    addListener(fn: (data: { displayedFlights?: Flight[]; pnr: PNR }) => void) {
+      return effect(() => fn(stateData.get()), [stateData], false);
+    },
+
+    addLogListener(fn: (log: Log) => void) {
+      return effect(
+        () => {
+          const _log = log.get();
+          if (_log) fn(_log);
+        },
+        [log],
+        false,
+      );
+    },
+  };
+
+  // ------------------------------------------------------------------------------------
+  // HANDLER FUNCTIONS
+  // ------------------------------------------------------------------------------------
+
+  function handleAN(command: AvailabilityCommand) {
+    const dateOfFlight = calculateDate(
+      command.travelMonth as Month,
+      parseInt(command.travelDay),
     );
 
-    // filter flights even further if airline code is indicated
-    if (command.airlineBrandCode) {
-      filteredFlights = filteredFlights.filter(
-        (f) => f.airlineCode === command.airlineBrandCode,
-      );
-    }
+    // Check if origin and destination are valid airport entries
+    if (!AIRPORTS.includes(command.origin as City))
+      throw new RuntimeError('Invalid Origin City');
 
-    /** Add to command stack */
-    context.addToCommandStack(command);
+    if (!AIRPORTS.includes(command.destination as City))
+      throw new RuntimeError('Invalid Destination City');
 
-    /** Check if there are entries, throw an error if no entries */
-    if (filteredFlights.length === 0) {
-      throw new InterpreterError(
-        'No flights are available for the selected query',
-      );
-    }
-
-    return filteredFlights;
+    // ------------------------------------------------------------------------------------
+    // UPDATE FLIGHT QUERY PARAMS
+    // ------------------------------------------------------------------------------------
+    flightQueryParams.set({
+      dateOfFlight,
+      origin: command.origin as City,
+      destination: command.destination as City,
+      airlineBrandCode: command.airlineBrandCode as AirlineCode,
+    });
   }
 
-  /**
-   * Selects a flight from the available list of flights.
-   * Flight numbers start from 1 onwards
-   */
-  function handleSelectFlight({
-    bookingClass,
-    flightNumber,
-    passengerCount,
-  }: SellCommand) {
-    if (flightNumber < 0 || flightNumber >= flights.length) {
-      throw new InterpreterError('Flight number is not on the list!');
-    }
+  function handleSS(command: SellSegmentCommand) {
+    const _displayedFlights = displayedFlights.get();
 
-    const selectedFlight = flights[flightNumber - 1];
+    // ------------------------------------------------------------------------------------
+    // COMMAND CHECKS
+    // ------------------------------------------------------------------------------------
+    if (!BOOKING_CLASS_CODES.includes(command.bookingClass as BookingClass))
+      throw new RuntimeError('Invalid booking class');
 
-    // Check if selected flight exists
-    if (!selectedFlight) {
-      throw new InterpreterError('Flight number is not on the list!');
-    }
-
-    // Check if valid booking class and exists for the selected flight
-    if (!(bookingClass in selectedFlight.booking)) {
-      throw new InterpreterError('Invalid booking class for selected flight.');
-    }
-
-    // Check if there are enough seats
-    if (selectedFlight.booking[bookingClass as BookingClass] < passengerCount) {
-      throw new Error(
-        'Not enough passenger seats available for selected booking class.',
+    if (!_displayedFlights)
+      throw new RuntimeError(
+        'Available flights not specified. Enter the AN command first before calling SS.',
       );
+
+    if (
+      command.flightNumber <= 0 ||
+      command.flightNumber > _displayedFlights.length
+    )
+      throw new RuntimeError('Invalid segment selection');
+
+    // We are trying to sell this segment
+    const { airlineCode, booking, dateOfFlight, origin, destination } =
+      _displayedFlights[command.flightNumber - 1]!;
+
+    // Check for status code
+    let statusCode: StatusCode;
+
+    if (booking[command.bookingClass as BookingClass] >= command.passengerCount)
+      statusCode = 'HK';
+    else {
+      log.set({
+        type: 'warn',
+        text: 'Available seats is insufficient for selected booking class. Will mark as UC',
+      });
+
+      statusCode = 'UC';
     }
 
-    // Add to context window
-    context.pnrData = {
-      bookingClass: bookingClass as BookingClass,
-      flightNumber,
-      passengerCount,
-    };
+    pnr.update((prev) => {
+      prev.segments.push({
+        airlineCode,
+        bookingClass: command.bookingClass as BookingClass,
+        dateOfFlight,
+        origin,
+        destination,
+        statusCode,
+        passengerCount: command.passengerCount,
+      });
 
-    // Command stack
-    context.addToCommandStack(command, context.unsetPNRData);
+      return { ...prev };
+    });
   }
 
-  /** Adds a bunch of passengers (NM command) */
-  function handleAddName(command: NameCommand) {
-    const passengers = command.entries.reduce((p, v) => {
-      if (v.count === 1) {
-        p.push({
-          surname: v.surname,
-          givenName: v.givenNames[0]!,
-          title: command.title,
-        });
-      } else
-        for (const givenName of v.givenNames) {
-          p.push({
-            surname: v.surname,
+  function handleNM(command: NameCommand) {
+    // Condense the name entries into one array
+    pnr.update((prev) => {
+      prev.names.push(...flattenNames(command));
+      return { ...prev };
+    });
+
+    function flattenNames(command: NameCommand) {
+      return command.entries.reduce((arr, n) => {
+        if (n.count < 1)
+          throw new RuntimeError(
+            'Please specify a given name for the passenger',
+          );
+
+        for (const givenName of n.givenNames) {
+          arr.push({
+            surname: n.surname,
             givenName,
             title: command.title,
           });
         }
 
-      return p;
-    }, [] as PassengerData[]);
+        return arr;
+      }, [] as PNRPassengerName[]);
+    }
+  }
 
-    context.addPassenger(...passengers);
+  function handleAPM(command: PassengerMobileCommand) {
+    if (!/^09\d{9}$/.test(command.mobile))
+      throw new RuntimeError(
+        'Invalid mobile number. Use number format 09xxxxxxxxx',
+      );
 
-    context.addToCommandStack(command, () => {
-      context.removePassenger(...passengers);
+    pnr.update((prev) => {
+      prev.mobile = command.mobile;
+      return { ...prev };
     });
   }
 
-  function handleAddPassengerMobile(command: PassengerMobileCommand) {
-    context.setPassengerMobile(command.mobile);
-    context.addToCommandStack(command, context.unsetPassengerMobile);
+  function handleAPE(command: PassengerEmailCommand) {
+    if (!/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(command.email))
+      throw new RuntimeError('Invalid email format');
+
+    pnr.update((prev) => {
+      prev.email = command.email;
+      return { ...prev };
+    });
   }
 
-  function handleAddPassengerEmail(command: PassengerEmailCommand) {
-    context.setPassengerEmail(command.email);
-    context.addToCommandStack(command, context.unsetPassengerEmail);
+  function handleXE(command: CancelSegmentCommand) {
+    if (command.lineNumber <= 0 || command.lineNumber > pnr.get().segments.length) 
+      throw new RuntimeError('Invalid segment number');
+
+    pnr.update((prev) => {
+      prev.segments.splice(command.lineNumber - 1, 1);
+      if (prev.segments.length === 0) {
+        log.set({
+          type: 'warn',
+          text: 'No itinerary segments remaining after delete.',
+        });
+      }
+
+      return { ...prev };
+    });
   }
 
-  function handleSetTicketLimit(command: TicketingLimitCommand) {
-    let month = MONTHS[command.month as keyof typeof MONTHS];
+  function handleTKTL(command: TicketingLimitCommand) {
+    const deadline = calculateDate(command.month as Month, command.day);
 
-    // Auto-parse new year (future lookahead)
-    const expiryDate = new Date();
-
-    expiryDate.setMonth(month);
-    expiryDate.setDate(command.day);
-
-    // Increment flight date by 1 if flight date is in the past
-    if (expiryDate.getTime() <= new Date().getTime()) {
-      expiryDate.setFullYear(expiryDate.getFullYear() + 1);
-    }
-
-    context.setTicketExpiry(expiryDate);
-    context.addToCommandStack(command, context.unsetTicketExpiry);
+    pnr.update((prev) => {
+      prev.ticketingDeadline = deadline;
+      return { ...prev };
+    });
   }
 
-  function handleSaveRecord() {
-    // Do a check of everything
-
-    // Check if all required entries exist
-    if (!context.pnrData) {
-      throw new InterpreterError(`Flight number not selected.`);
-    }
-
-    if (!context.pnrData.ticketExpiry) {
-      throw new InterpreterError(`Ticket expiry date not specified.`);
-    }
-
-    // Compares passenger count registered via SS vs. number of names listed via NM
-    if (context.pnrData?.passengerCount !== context.passengerCount) {
-      throw new InterpreterError(
-        `Passenger count mismatch. Registered ${context.pnrData?.passengerCount} passengers, but found ${context.passengerCount} names`,
-      );
-    }
-
-    // return a readonly copy of items
-    return context.getReadonlyData();
-  }
-
-  function handleDeleteLine(command: DeleteLineCommand) {
-    context.purgeFromCommandStack(command.lineNumber);
+  /** TODO: implement evaluation */
+  function handleER(_command: EndRecordCommand) {
+    // We evaluate here
+    const finalPNR = pnr.get();
+    const finalFlightQueryParams = flightQueryParams.get();
   }
 }
