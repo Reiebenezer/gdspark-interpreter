@@ -171,7 +171,7 @@ export default function GDSparkInterpreter(
   function handleAN(command: AvailabilityCommand) {
     const dateOfFlight = calculateDate(
       command.travelMonth as Month,
-      parseInt(command.travelDay),
+      command.travelDay,
     );
 
     // Check if origin and destination are valid airport entries

@@ -5,7 +5,7 @@
     "": {
       "name": "gdspark-interpreter",
       "dependencies": {
-        "@reiebenezer/gdspark-parser": "^0.1.7",
+        "@reiebenezer/gdspark-parser": "latest",
         "@reiebenezer/ts-utils": "^0.2.1",
       },
       "devDependencies": {
@@ -14,7 +14,7 @@
     },
   },
   "packages": {
-    "@reiebenezer/gdspark-parser": ["@reiebenezer/gdspark-parser@0.1.7", "", { "peerDependencies": { "typescript": "^5" } }, "sha512-Ddjfv08bTrJvaxPQJSL/Mh3ve1/1DnJiYTZBaHht+asxG68WiCeEQp7SkAplR+jinOCapvW+YjXqp15NQE0fDg=="],
+    "@reiebenezer/gdspark-parser": ["@reiebenezer/gdspark-parser@0.1.8", "", { "peerDependencies": { "typescript": "^5" } }, "sha512-+ppbOgAmRZGh66e/SWSJrNqVoqOx3RFuX5WYeMmSlrqr3TOPbkmCturQFA9gDzp21nF/x8cURfPRvGTJtY3R0A=="],
 
     "@reiebenezer/ts-utils": ["@reiebenezer/ts-utils@0.2.1", "", { "dependencies": { "color-convert": "^3.1.0", "react": "^19.2.0" }, "peerDependencies": { "typescript": "^5.9.2" } }, "sha512-QmLBvdwITVx3PYnSfK/EEKihSGpdldPLYd5m6rKhoPamhScaYayU4myJ67HTAQnEcqDb9lBoTaZ3iqaNVJJWlw=="],
 

@@ -45,7 +45,7 @@ const interpreter = Interpreter(constraints, 12345);
 Pass raw command strings to `handleInput()`.
 
 ```ts
-interpreter.handleInput('AN10APR MNLCEB');
+interpreter.handleInput('AN10APRMNLCEB');
 interpreter.handleInput('SS1Y1');
 interpreter.handleInput('NM1DELA CRUZ/JUAN MR');
 interpreter.handleInput('APM09171234567');
