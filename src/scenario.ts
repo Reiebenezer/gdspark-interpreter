@@ -4,7 +4,7 @@ import { AIRLINE_IATA_CODES, AIRPORTS, type Flight } from './types';
 export function generateFlights(seed?: number) {
   const seeder = createRNG(seed);
 
-  const numberOfFlights = seeder.nextFromIntRange(10, 200);
+  const numberOfFlights = seeder.nextFromIntRange(100, 500);
   const flights: Flight[] = [];
 
   for (let i = 0; i < numberOfFlights; i++) {

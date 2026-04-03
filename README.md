@@ -16,6 +16,11 @@ The package currently exposes these public entrypoints:
 - `generateFlights` from `@reiebenezer/gdspark-interpreter/scenario`
 - shared types from `@reiebenezer/gdspark-interpreter/types`
 
+## Flight Generation
+
+The flight directory is randomly generated, with booking dates up to 5 days ahead of current date. 
+Does not include the current day in the list.
+
 ## Basic Usage
 
 ```ts
