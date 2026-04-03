@@ -14,24 +14,40 @@ export function generateFlights(seed?: number) {
   return flights;
 }
 
-export function generateRandomFlightDetails(seeder: Seeder, numberOfFlights: number, index: number): Flight {
+export function generateRandomFlightDetails(
+  seeder: Seeder,
+  numberOfFlights: number,
+  index: number,
+): Flight {
   const airlineCode = seeder.pickFrom(AIRLINE_IATA_CODES);
   const flightNumber = seeder.nextFromIntRange(100, 1000);
 
   const dateOfFlight = new Date();
-  
-  // Deterministic date to ensure equal distribution
-  dateOfFlight.setDate(dateOfFlight.getDate() + Math.floor(index / numberOfFlights * 5));
-  
-  // Made hours random though
-  dateOfFlight.setHours(seeder.nextFromIntRange(1, 25), seeder.nextFromIntRange(1, 60), 0, 0);
 
-  // origin
-  const from = seeder.pickFrom(AIRPORTS);
+  // Deterministic date to ensure equal distribution (up to 5 days in the future)
+  dateOfFlight.setDate(
+    dateOfFlight.getDate() + 1 + Math.floor((index / numberOfFlights) * 5),
+  );
+
+  // Made hours random though
+  dateOfFlight.setHours(
+    seeder.nextFromIntRange(1, 25),
+    seeder.nextFromIntRange(1, 60),
+    0,
+    0,
+  );
+
+  // origin (deterministic)
+  const origin = AIRPORTS[index % AIRPORTS.length]!;
+
+  // For destination (does not return to origin airport so from is excluded)
+  const filteredAirports = AIRPORTS.filter((c) => c !== origin);
 
   // destination
-  const to = seeder.pickFrom(AIRPORTS.filter((c) => c !== from)); // filtered to ensure that there is no same from-to city
-  const seats: Flight['booking'] = {
+  const destination = AIRPORTS[index % filteredAirports.length]!;
+
+  // Booking classes
+  const booking: Flight['booking'] = {
     F: seeder.nextFromIntRange(0, 10),
     J: seeder.nextFromIntRange(0, 10),
     C: seeder.nextFromIntRange(0, 10),
@@ -48,8 +64,8 @@ export function generateRandomFlightDetails(seeder: Seeder, numberOfFlights: num
     airlineCode,
     flightNumber,
     dateOfFlight,
-    origin: from,
-    destination: to,
-    booking: seats,
+    origin,
+    destination,
+    booking,
   };
 }
