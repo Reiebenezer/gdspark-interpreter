@@ -85,15 +85,6 @@ export default function GDSparkInterpreter(
     mobile: undefined,
   });
 
-  const stateData = derived(
-    () => ({
-      queryParams: flightQueryParams.get(),
-      displayedFlights: displayedFlights.get(),
-      pnr: pnr.get(),
-    }),
-    [flightQueryParams, pnr],
-  );
-
   return {
     handleInput(commandString: string) {
       try {
@@ -141,15 +132,30 @@ export default function GDSparkInterpreter(
             type: 'err',
             text: error.message,
           });
-
         else {
           throw error;
         }
       }
     },
 
-    addListener(fn: (data: { displayedFlights?: Flight[]; pnr: PNR }) => void) {
-      return effect(() => fn(stateData.get()), [stateData], false);
+    /** An effect that listens to changes in flight query params */
+    onFlightQuery(
+      fn: (params: FlightQueryParams, displayedFlights: Flight[]) => void,
+    ) {
+      return effect(() => {
+        const params = flightQueryParams.get();
+        const flights = displayedFlights.get();
+
+        if (params && flights) fn(params, flights);
+      }, [flightQueryParams]);
+    },
+
+    /** An effect that listens to changes in the PNR */
+    onPNRUpdate(fn: (pnr: PNR) => void) {
+      return effect(() => {
+        const _pnr = pnr.get();
+        if (_pnr) fn(_pnr);
+      }, [pnr]);
     },
 
     addLogListener(fn: (log: Log) => void) {
@@ -163,9 +169,25 @@ export default function GDSparkInterpreter(
       );
     },
 
-    addDebugMethod(fn: (flights: Flight[], flightQueryParams?: FlightQueryParams, displayedFlights?: Flight[], pnr?: PNR)  => void) {
-      return effect(() => fn(flights, flightQueryParams.get(), displayedFlights.get(), pnr.get()), [displayedFlights, pnr]);
-    }
+    addListener(
+      fn: (
+        flights: Flight[],
+        flightQueryParams?: FlightQueryParams,
+        displayedFlights?: Flight[],
+        pnr?: PNR,
+      ) => void,
+    ) {
+      return effect(
+        () =>
+          fn(
+            flights,
+            flightQueryParams.get(),
+            displayedFlights.get(),
+            pnr.get(),
+          ),
+        [displayedFlights, pnr],
+      );
+    },
   };
 
   // ------------------------------------------------------------------------------------
@@ -299,7 +321,10 @@ export default function GDSparkInterpreter(
   }
 
   function handleXE(command: CancelSegmentCommand) {
-    if (command.lineNumber <= 0 || command.lineNumber > pnr.get().segments.length) 
+    if (
+      command.lineNumber <= 0 ||
+      command.lineNumber > pnr.get().segments.length
+    )
       throw new RuntimeError('Invalid segment number');
 
     pnr.update((prev) => {
