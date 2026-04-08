@@ -12,11 +12,12 @@ import {
   type Month,
   type PNRPassengerName,
   type StateUpdater,
-  type TestConstraints,
+  type TestDetails,
   type PNR,
   type Log,
   type StatusCode,
   RuntimeError,
+  type Score,
 } from './types';
 import { generateFlights } from './scenario';
 import { parse } from '@reiebenezer/gdspark-parser';
@@ -34,14 +35,16 @@ import type {
   EndRecordCommand,
 } from '@reiebenezer/gdspark-parser/types';
 import { derived, effect, signal } from '@reiebenezer/ts-utils/signal';
-import { calculateDate } from './utils';
+import { calculateDate, isDateEqual } from './utils';
 
 export default function GDSparkInterpreter(
   seed?: number,
-  testConstraints?: TestConstraints,
+  testDetails?: TestDetails,
 ) {
   const flights = generateFlights(seed);
   const log = signal<Log>();
+  let scoreListener: ((score: Score) => void) | undefined = undefined;
+  let commandsEntered = 0;
 
   // ------------------------------------------------------------------------------------
   // AN
@@ -87,6 +90,8 @@ export default function GDSparkInterpreter(
 
   return {
     handleInput(commandString: string) {
+      commandsEntered++;
+
       try {
         const command = parse(commandString);
         switch (command.code) {
@@ -188,6 +193,12 @@ export default function GDSparkInterpreter(
         [displayedFlights, pnr],
       );
     },
+
+    onShowScore(fn: (score: Score) => void) {
+      scoreListener = fn;
+
+      return () => (scoreListener = undefined);
+    },
   };
 
   // ------------------------------------------------------------------------------------
@@ -239,8 +250,14 @@ export default function GDSparkInterpreter(
       throw new RuntimeError('Invalid segment selection');
 
     // We are trying to sell this segment
-    const { airlineCode, flightNumber, booking, dateOfFlight, origin, destination } =
-      _displayedFlights[command.flightNumber - 1]!;
+    const {
+      airlineCode,
+      flightNumber,
+      booking,
+      dateOfFlight,
+      origin,
+      destination,
+    } = _displayedFlights[command.flightNumber - 1]!;
 
     // Check for status code
     let statusCode: StatusCode;
@@ -350,10 +367,97 @@ export default function GDSparkInterpreter(
     });
   }
 
-  /** TODO: implement evaluation */
   function handleER(_command: EndRecordCommand) {
     // We evaluate here
     const finalPNR = pnr.get();
     const finalFlightQueryParams = flightQueryParams.get();
+
+    // Do nothing if there are no test details
+    if (!testDetails) return;
+
+    /** Flight query score */
+    const fqScore =
+      finalFlightQueryParams ?
+        (function compareFlightQuery() {
+          let score = 0;
+
+          /** The reason we manually check each param is to ensure that each parameter is correctly scored */
+
+          if (
+            isDateEqual(
+              finalFlightQueryParams.dateOfFlight,
+              testDetails.expectedANQuery.dateOfFlight,
+            )
+          ) {
+            score++;
+          }
+
+          if (
+            finalFlightQueryParams.origin === testDetails.expectedANQuery.origin
+          ) {
+            score++;
+          }
+
+          if (
+            finalFlightQueryParams.destination ===
+            testDetails.expectedANQuery.destination
+          ) {
+            score++;
+          }
+
+          if (
+            testDetails.expectedANQuery.airlineBrandCode !== undefined &&
+            finalFlightQueryParams.airlineBrandCode ===
+              testDetails.expectedANQuery.airlineBrandCode
+          ) {
+            score++;
+          }
+
+          return score;
+        })()
+      : 0;
+
+    const ssScore = (function compareSegments() {
+      function simplifyPNRSegment(s: PNRSegment) {
+        return `${s.airlineCode} ${s.flightNumber}-${s.bookingClass}-${s.dateOfFlight.toDateString()}-${s.origin}-${s.destination}-${s.passengerCount}`;
+      }
+
+      const expectedSegments = new Set(testDetails.expectedPNR.segments.map(simplifyPNRSegment));
+      const enteredSegments = new Set(finalPNR.segments.map(simplifyPNRSegment));
+
+      let score = 0;
+
+      for (const ex of expectedSegments) {
+        if (enteredSegments.has(ex)) score++;
+      }
+
+      return score;
+    })();
+
+    const nmScore = (function compareNames() {
+      function simplifyName(n: PNRPassengerName) {
+        return `${n.surname}/${n.givenName} ${n.title}`;
+      }
+
+      const expectedNames = new Set(testDetails.expectedPNR.names.map(simplifyName));
+      const enteredNames = new Set(finalPNR.names.map(simplifyName));
+
+      let score = 0;
+
+      for (const ex of expectedNames) {
+        if (enteredNames.has(ex)) score++;
+      }
+
+      return score;
+    })();
+
+    scoreListener?.({
+      query: [fqScore, testDetails.expectedANQuery.airlineBrandCode ? 4 : 3],
+      segments: [ssScore, testDetails.expectedPNR.segments.length],
+      names: [nmScore, testDetails.expectedPNR.names.length],
+      isCorrectEmail: testDetails.expectedPNR.email ? testDetails.expectedPNR.email === finalPNR.email : null,
+      isCorrectMobile: testDetails.expectedPNR.mobile ? testDetails.expectedPNR.mobile === finalPNR.mobile : null,
+      excessCommandDeduction: Math.max(0, commandsEntered - testDetails.minCommandsEntered),
+    });
   }
 }

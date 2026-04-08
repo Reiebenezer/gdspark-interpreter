@@ -105,9 +105,43 @@ export interface PNR {
   ticketingDeadline?: Date;
 }
 
-export interface TestConstraints {
+export interface TestDetails {
   expectedANQuery: FlightQueryParams;
   expectedPNR: PNR;
+  minCommandsEntered: number;
+}
+
+/** 
+ * Scoring
+ * 
+ * AN Query: 
+ * PNR: 
+ *  -> Correct Segments: 1 point per correct SS :: correct/totalrequired
+ *  -> Correct Names: 1 point per correct name :: correct/totalrequired
+ *  -> Correct Contacts: 1 point per correct contact :: correct/totalrequired
+ * Excess commands entered: -1 point per excess
+ * 
+ * 
+ */
+export interface Score {
+
+  /** Total correct query points (1 point for Date, 1 point for origin, 1 point for destination, bonus 1 point for airline code) / total */
+  query: readonly [number, number];
+
+  /** correct segments / required segments */
+  segments: readonly [number, number];
+
+  /** correct names / required names */
+  names: readonly [number, number];
+
+  /** Correct email (null if email is not required) */
+  isCorrectEmail: boolean | null;
+
+  /** Correct mobile number (null if mobile is not required) */
+  isCorrectMobile: boolean | null;
+
+  /** Number of unnecessary or incorrect commands entered. Deducted from total score */
+  excessCommandDeduction: number;
 }
 
 export type StateUpdater = (newState: SessionState) => void;
